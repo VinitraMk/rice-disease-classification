@@ -275,12 +275,10 @@ class Index:
                 print(f'\tBuilding batch {i} for validation')
                 save_tensor(batch[0], f'valid_batch_{i}_images')
                 save_tensor(batch[1], f'valid_batch_{i}_labels')
-        '''
         self.__upload_batch_data()
         self.__train_model_in_azure()
         print('\nDownloading output')
         self.__download_output()
-        '''
         self.__evaluate_model()
 
 if __name__ == "__main__":

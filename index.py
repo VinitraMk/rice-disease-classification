@@ -9,35 +9,34 @@ from azureml.data import OutputFileDatasetConfig
 from datetime import date
 from azure.storage.blob import BlobServiceClient, BlobClient
 import pandas as pd
-from torchtext.data.functional import to_map_style_dataset
 import warnings
 import json
 import numpy as np
 import matplotlib.pyplot as plt
-from gensim.models import Word2Vec
 from sklearn.model_selection import KFold
 from azureml.core.authentication import InteractiveLoginAuthentication
 import mlflow
 
 #custom imports
 from helper.preprocessor import Preprocessor
-from constants.model_enums import Model
-from helper.augmenter import generate_new_data
-from models.rnn import RNN
-from experiments.WeatherDataset import WeatherDataset
+from helper.augmenter import Augmenter
+from constants.types.model_enums import Model
+from models.cnn import CNN
+from experiments.RiceDataset import RiceDataset 
 from helper.utils import get_config, get_filename, get_model_params, get_preproc_params, init_weights, read_json, save_fig, save_model, save_tensor, get_target_cols, get_azure_config
 
 class Index:
-
     model_args = None
     preproc_args = None
     config = None
     preprocessor = None
     train_dataset = None
+    valid_dataset = None
     test_dataset = None
     model_details = dict()
-    no_of_batches = 0
-    split_train_dataset = None
+    valid_batches_count = 0
+    train_batches_count = 0
+    test_batches_count = 0
     current_model_obj = None
     model_state = None
     blob_service_client = None
@@ -50,11 +49,16 @@ class Index:
         self.__define_args()
         self.__preprocess_data()
         self.__prepare_datasets()
-        self.__get_word2vec_embeddings()
         self.__make_model()
         self.__make_azure_resources()
         print("############# Starting training with training data #############################\n\n")
         self.__start_training(self.test_loader)
+
+    def __get_labels(self, predicted_labels):
+        actual_labels = []
+        for label in predicted_labels:
+            actual_labels.append(self.idx_to_class[label])
+        return actual_labels
         
     def __define_args(self):
         print('\nDefining configs')
@@ -66,48 +70,32 @@ class Index:
         self.blob_service_client = BlobServiceClient(account_url=STORAGE_ACCOUNT_URL, credential=os.environ["AZURE_STORAGE_CONNECTIONKEY"])
 
     def __preprocess_data(self):
-        print('Setting up preprocessor')
+        print('\nSetting up preprocessor')
+        self.augmenter = Augmenter()
         self.preprocessor = Preprocessor()
-        self.train_dataset = WeatherDataset(f'{self.config["input_path"]}\\train.csv')
-        self.test_dataset = WeatherDataset(f'{self.config["input_path"]}\\test.csv', False)
-        self.preprocessor.start_preprocessing(self.train_dataset)
+        class_to_idx, idx_to_class = self.preprocessor.get_class_mappings()
+        self.idx_to_class = idx_to_class
+        train, test, valid = self.preprocessor.get_data_paths()
+        train_transforms, test_transforms = self.augmenter.get_transforms()
+        self.train_dataset = RiceDataset(train, class_to_idx, train_transforms)
+        self.valid_dataset = RiceDataset(valid, class_to_idx, test_transforms)
+        self.test_dataset = RiceDataset(test, class_to_idx, test_transforms)
+        #self.preprocessor.start_preprocessing(self.train_dataset)
     
     def __prepare_datasets(self):
-        print('Preparing dataset')
-        num_train = int(len(self.train_dataset) * self.preproc_args["train_validation_split"])
-        num_valid = len(self.train_dataset) - num_train
-        self.no_of_batches = int(num_train / self.model_args["batch_size"]) + 1
-        self.valid_batches_count = int(num_valid / self.model_args["batch_size"]) + 1
-        split_train_, split_valid_ = random_split(self.train_dataset, [num_train, num_valid])
-        self.split_train_dataset = split_train_
-        self.train_loader = DataLoader(split_train_, batch_size = self.model_args["batch_size"], shuffle = True, collate_fn=self.preprocessor.collate_batch)
-        self.valid_loader = DataLoader(split_valid_, batch_size = self.model_args["batch_size"], shuffle = True, collate_fn=self.preprocessor.collate_batch)
-        self.test_loader = DataLoader(self.test_dataset, batch_size = self.model_args["batch_size"], shuffle=False, collate_fn=self.preprocessor.collate_batch)
-
-    def __get_word2vec_embeddings(self):
-        io_path = self.config["processed_io_path"]
-        embedding_model_path = f'{io_path}\\models\\word_embeddings.model'
-        if not(os.path.exists(embedding_model_path)):
-            print('Getting word embeddings')
-            print('\tGetting tokens')
-            train_tokens = self.preprocessor.get_tokens_for_dataset(self.train_dataset)
-            print('\tInitializing Word2Vec')
-            self.embedding_model = Word2Vec(sentences = train_tokens, vector_size=self.model_args["embed_dim"], window=self.model_args["window_size"], min_count = 1)
-            print('\tTraining Word2Vec')
-            self.embedding_model.train(train_tokens, total_examples=len(train_tokens), epochs=self.model_args["word2vec_epochs"])
-            print('\tSaving Word2Vec embeddings')
-            self.embedding_model.save(embedding_model_path)
+        print('\nPreparing dataset')
+        self.train_loader = DataLoader(self.train_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
+        self.train_batches_count = int(len(self.train_dataset) / self.model_args["batch_size"]) + 1
+        self.valid_loader = DataLoader(self.valid_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
+        self.valid_batches_count = int(len(self.valid_dataset) / self.model_args["batch_size"]) + 1
+        self.test_loader = DataLoader(self.test_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
+        self.test_batches_count = int(len(self.test_dataset) / self.model_args["batch_size"]) + 1
 
     def __make_model(self):
-        print('Making model')
-        print('\tInitializing with weights from word embeddings')
-        self.weight_matrix = self.preprocessor.build_vocab_weights()
-        save_tensor(self.weight_matrix, 'word_embeddings_weights')
-        print('\tInitializing model')
-        if (self.model_args["model"] == Model.RNN):
-            self.model = RNN(self.model_args["lstm_size"], self.model_args["embed_dim"], self.model_args["num_layers"], self.preprocessor.get_vocab_size(), self.model_args['num_classes'], self.model_args["dropout"])
-        self.model.apply(init_weights)
-        criterion = torch.nn.BCEWithLogitsLoss()
+        print('\nMaking model')
+        if (self.model_args["model"] == Model.CNN):
+            self.model = CNN()
+        criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(self.model.parameters(), lr = self.model_args['lr'], momentum = self.model_args["momentum"])
         model_obj = {
             'model_state': self.model.state_dict(),
@@ -115,10 +103,6 @@ class Index:
             'optimizer_state': optimizer.state_dict()
         }
         #print('model state', self.model.state_dict())
-        if self.model_args["model"] == Model.RNN:
-            prev_state_h, prev_state_c = self.model.init_state(self.model_args["text_max_length"])
-            model_obj["rnn_prev_state_h"], model_obj["rnn_prev_state_c"] = prev_state_h, prev_state_c
-            self.model_state = (prev_state_h, prev_state_c)
         model_path = f"{self.config['processed_io_path']}\\models"
         print('\tSaving model')
         save_model(model_obj, model_path, self.model_args["model"], True)
@@ -158,8 +142,8 @@ class Index:
         config = ScriptRunConfig(
             source_directory='./models/training_scripts',
             script='train_nn.py',
-            arguments=[input_data, output, self.model_args["model"], self.preprocessor.get_vocab_size(), model_args_string,
-            self.no_of_batches, self.valid_batches_count],
+            arguments=[input_data, output, self.model_args["model"], model_args_string,
+            self.train_batches_count, self.valid_batches_count],
             compute_target="mikasa",
             environment=self.azenv
         )
@@ -169,8 +153,12 @@ class Index:
 
     def __upload_batch_data(self):
         self.__copy_model_chkpoint()
-        print('\t\tUploading data to blob storage')
-        self.def_blob_store.upload(src_dir='./processed_io', target_path="input/", overwrite=True, show_progress = False)
+        if (self.model_args['refresh_data']):
+            print('\t\tUploading data to blob storage')
+            self.def_blob_store.upload(src_dir='./processed_io/input', target_path="input/input", overwrite=True, show_progress = False)
+        if (self.model_args['refresh_model']):
+            print('\t\tUploading model to blob storage')
+            self.def_blob_store.upload(src_dir='./processed_io/models', target_path="input/models", overwrite=True, show_progress = False)
 
     def __download_output(self):
         config = get_config()
@@ -199,16 +187,15 @@ class Index:
         FOLDER_CONTAINER = f"{ROOT_CONTAINER}/input/input"
         LOCAL_PATH = self.config["internal_output_path"]
         blob_container_client = self.blob_service_client.get_container_client(ROOT_CONTAINER)
-        all_blobs = blob_container_client.list_blobs()
+        all_blobs = blob_container_client.list_blobs(name_starts_with='input/input/tensor')
         for b in all_blobs:
-            if "tensor" in b.name:
-                blob_name = b.name.split('/')[2]
-                blob_client_model = self.blob_service_client.get_blob_client(FOLDER_CONTAINER, blob_name, snapshot=None)
-                print(f'\tDeleting tensor {blob_name}')
-                blob_client_model.delete_blob()
-                local_blob_path = f"{self.config['internal_output_path']}\\{blob_name}"
-                if os.path.exists(local_blob_path):
-                    os.remove(local_blob_path)
+            blob_name = b.name.split('/')[2]
+            blob_client_model = self.blob_service_client.get_blob_client(FOLDER_CONTAINER, blob_name, snapshot=None)
+            print(f'\tDeleting tensor {blob_name}')
+            blob_client_model.delete_blob()
+            local_blob_path = f"{self.config['internal_output_path']}\\{blob_name}"
+            if os.path.exists(local_blob_path):
+                os.remove(local_blob_path)
 
     def __plot_loss_accuracy(self, filename):
         #plot for loss and accuracy
@@ -253,51 +240,47 @@ class Index:
         self.model.load_state_dict(model_object['model_state'])
         self.model.eval()
         target_cols = get_target_cols()
-        results_df = pd.DataFrame([], columns=['id'] + target_cols)
+        results_df = pd.DataFrame([], columns=['Image_id'] + self.model_args['output_labels'])
         with torch.no_grad():
             for i, batch in enumerate(self.test_loader):
-                if self.model_args["model"] == Model.RNN:
-                    prev_state= (model_object["rnn_prev_state_h"], model_object["rnn_prev_state_c"])
-                    predicted_probs, _ = self.model(batch[1])
-                predicted_labels = predicted_probs[-1].type(torch.float)
-                actual_labels = batch[0].type(torch.float)
-                predicted_df = pd.DataFrame(predicted_labels.numpy(), columns=target_cols)
-                predicted_ids = pd.DataFrame(batch[2].numpy(), columns=['id'])
+                if self.model_args["model"] == Model.CNN:
+                    predicted_probs = self.model(batch[0])
+                    #predicted_labels = torch.max(predicted_probs, 1).indices
+                #actual_labels = batch[0].type(torch.float)
+                get_cols = lambda x: { 'blast': x[0].item(), 'brown': x[1].item(), 'healthy': x[2].item()}
+                preds = []
+                for x in predicted_probs:
+                    preds.append(get_cols(x))
+                preds = preds + preds
+                predicted_df = pd.DataFrame(preds, columns=self.model_args['output_labels'])
+                rgn_ids = list(batch[2])
+                other_ids = [x.replace('_rgn','') for x in rgn_ids]
+                predicted_ids = pd.DataFrame(rgn_ids + other_ids, columns=['Image_id'])
                 predicted_df = pd.concat([predicted_ids, predicted_df], axis = 1)
-                results_df = results_df.append(predicted_df, ignore_index = True)
+                results_df = pd.concat([results_df, predicted_df])
             filename = get_filename(model_name)
             csv_output_path = f"{out_path}\\{filename}.csv"
             results_df.to_csv(csv_output_path, index = False)
             self.__plot_loss_accuracy(filename)
         
     def __start_training(self, test_loader, is_pseudo_test = False):
-        print("Vocabulary size: ", self.preprocessor.get_vocab_size(), '\n')
-        #self.model_details["current_epoch"] = epoch
-        #self.model_details[f"epoch_{epoch}"] = dict()
         if self.model_args['refresh_data']:
             self.__remove_old_inputs()
             print('\nBuilding all input tensors for training')
             for i, batch  in enumerate(self.train_loader):
                 print(f'\tBuilding batch {i} for training')
-                #out, _ = self.model(batch[1], self.model_state)
-                #print('predicted probs', out)
-                #print('predicted probs size', out.size())
-                #print('actual output', batch[0])
-                #print('actual output size', batch[0].size())
-                #exit()
-                save_tensor(batch[1], f'train_batch_{i}_texts')
-                save_tensor(batch[0], f'train_batch_{i}_labels')
-                save_tensor(batch[3], f'train_batch_{i}_offsets')
+                save_tensor(batch[0], f'train_batch_{i}_images')
+                save_tensor(batch[1], f'train_batch_{i}_labels')
             for i, batch in enumerate(self.valid_loader):
                 print(f'\tBuilding batch {i} for validation')
-                save_tensor(batch[1], f'valid_batch_{i}_texts')
-                save_tensor(batch[0], f'valid_batch_{i}_labels')
-                save_tensor(batch[3], f'valid_batch_{i}_offsets')
-            self.__upload_batch_data()
-        print('\nTraining model')
+                save_tensor(batch[0], f'valid_batch_{i}_images')
+                save_tensor(batch[1], f'valid_batch_{i}_labels')
+        '''
+        self.__upload_batch_data()
         self.__train_model_in_azure()
         print('\nDownloading output')
         self.__download_output()
+        '''
         self.__evaluate_model()
 
 if __name__ == "__main__":

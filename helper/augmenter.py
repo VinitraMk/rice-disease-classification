@@ -1,42 +1,43 @@
-from constants.types.sampling_method import SamplingMethod
 from helper.utils import get_config, get_preproc_params
-from imblearn.over_sampling import SMOTE
-import nlpaug
-import nlpaug.augmenter.word as naw
 import pandas as pd
 import os
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 class Augmenter:
     preproc_args = None
     train_X = None
     y = None
     train_texts = None
-    augmenter = None
+    train_transforms = None
+    test_transforms = None
 
-    def __init__(self, train_X, y):
+    def __init__(self):
         self.preproc_args = get_preproc_params()
-        self.train_X = train_X
-        self.y = y
-
-    def apply_data_augmentation(self):
-        if self.preproc_args['sampling_method'] == SamplingMethod.SMOTE_SAMPLING:
-            return self.__apply_smote_sampling()
-
-    def __apply_smote_sampling(self):
-        self.augmenter = SMOTE(
-            random_state = 42,
-            k_neighbors = self.preproc_args['sampling_k'],
-            sampling_strategy = self.preproc_args['sampling_strategy']
+        #self.train_X = train_X
+        #self.y = y
+        self.train_transforms = A.Compose(
+            [
+                A.SmallestMaxSize(max_size=350),
+                A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=360, p=0.5),
+                A.RandomCrop(height=256, width=256),
+                A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
+                A.RandomBrightnessContrast(p=0.5),
+                A.MultiplicativeNoise(multiplier=[0.5,2], per_channel=True, p=0.2),
+                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                A.HueSaturationValue(hue_shift_limit=0.2, sat_shift_limit=0.2, val_shift_limit=0.2, p=0.5),
+                A.RandomBrightnessContrast(brightness_limit=(-0.1,0.1), contrast_limit=(-0.1, 0.1), p=0.5),
+                ToTensorV2(),
+            ]
         )
-        self.train_X, self.y = self.augmenter.fit_resample(self.train_X, self.y)
-        return self.train_X, self.y
+        self.test_transforms = A.Compose(
+            [
+                A.SmallestMaxSize(max_size=350),
+                A.CenterCrop(height=256, width=256),
+                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                ToTensorV2(),
+            ]
+        )
 
-def generate_new_data(train_texts):
-    config = get_config()
-    if not(os.path.exists(f'{config["input_path"]}\\new_data.csv')):
-        aug = naw.SynonymAug()
-        data = train_texts.tolist()
-        new_data = aug.augment(data)
-        new_data_df = pd.DataFrame(new_data,columns=['tweet'])
-        new_data_df.index.rename('Tweet_ID', inplace=True)
-        new_data_df.to_csv(f'{config["input_path"]}\\new_data.csv', mode='w+', index=True)
+    def get_transforms(self):
+        return self.train_transforms, self.test_transforms

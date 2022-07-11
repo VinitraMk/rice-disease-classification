@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+from torchvision import transforms
 
 class Augmenter:
     preproc_args = None
@@ -14,12 +15,19 @@ class Augmenter:
 
     def __init__(self):
         self.preproc_args = get_preproc_params()
-        #self.train_X = train_X
-        #self.y = y
+        #self.train_transforms = A.Compose([
+            #transforms.Resize(1500),
+            #transforms.ToTensor(),
+            #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        #])
+        #self.test_transforms = A.Compose([
+            #transforms.Resize(1500),
+            #transforms.ToTensor(),
+            #transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        #])
         self.train_transforms = A.Compose(
             [
                 A.SmallestMaxSize(max_size=350),
-                A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=360, p=0.5),
                 A.RandomCrop(height=256, width=256),
                 A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
                 A.RandomBrightnessContrast(p=0.5),

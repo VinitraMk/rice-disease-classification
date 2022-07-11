@@ -11,28 +11,8 @@ from torch.autograd import Variable
 import numpy as np
 import mlflow
 
-class CNN(nn.Module):
-    
-    def __init__(self):
-        super().__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 61 * 61, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 3)
-
-    def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = torch.flatten(x, 1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        x = torch.sigmoid(x)
-        return x
-
-
+#custom imports
+from cnn import CNN
 
 class ExperimentTrain:
 
@@ -166,8 +146,6 @@ if __name__ == "__main__":
     mounted_input_path = sys.argv[1]
     mounted_output_path = sys.argv[2]
     model_name = sys.argv[3]
-    #is_first_batch = True if sys.argv[5] == "True" else False
-    #is_last_batch = True if sys.argv[6] == "True" else False
     model_args_string = sys.argv[4]
     train_batches_count = int(sys.argv[5])
     valid_batches_count = int(sys.argv[6])

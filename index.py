@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import KFold
 from azureml.core.authentication import InteractiveLoginAuthentication
 import mlflow
+import shutil
 
 #custom imports
 from helper.preprocessor import Preprocessor
@@ -126,8 +127,17 @@ class Index:
     def __copy_model_chkpoint(self):
         local_model_path = f"{self.config['internal_output_path']}/{self.model_args['model']}_model.pt"
         upload_model_path = f"{self.config['processed_io_path']}/models/{self.model_args['model']}_model.pt"
+        train_scripts_path = f"{self.config['processed_io_path']}/training_scripts"
+        local_script_path = './models/training_scripts/train_nn.py'
+        local_model_file = f'./models/{self.model_args["model"]}.py'
         if (os.path.isfile(local_model_path)):
-            os.system(f"copy {local_model_path} {upload_model_path}")
+            shutil.copy(local_model_path, upload_model_path)
+            #os.system(f"copy {local_model_path} {upload_model_path}")
+        #os.system(f"copy {local_script_path} {train_scripts_path}")
+        #os.system(f"copy {local_model_file} {train_scripts_path}")
+        shutil.copy(local_script_path, f'{train_scripts_path}/train_nn.py')
+        shutil.copy(local_model_file, f'{train_scripts_path}/{self.model_args["model"]}.py')
+        
 
     def __merge_output_with_training(self):
         new_train_dataset = torch.utils.data.ConcatDataset([self.split_train_dataset, self.new_dataset])
@@ -140,7 +150,7 @@ class Index:
         output = OutputFileDatasetConfig(destination=(self.def_blob_store, '/output'))
         model_args_string = json.dumps(self.model_args)
         config = ScriptRunConfig(
-            source_directory='./models/training_scripts',
+            source_directory='./processed_io/training_scripts',
             script='train_nn.py',
             arguments=[input_data, output, self.model_args["model"], model_args_string,
             self.train_batches_count, self.valid_batches_count],
@@ -153,6 +163,7 @@ class Index:
 
     def __upload_batch_data(self):
         self.__copy_model_chkpoint()
+        print('\nUploding scripts and data')
         if (self.model_args['refresh_data']):
             print('\t\tUploading data to blob storage')
             self.def_blob_store.upload(src_dir='./processed_io/input', target_path="input/input", overwrite=True, show_progress = False)

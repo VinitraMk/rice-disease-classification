@@ -22,7 +22,7 @@ model_args:
     target_cols: ['Label']
     shuffle_data: False
     refresh_data: False
-    refresh_model: False
+    refresh_model: True
     output_labels: ['blast','brown', 'healthy']
                 
 preproc_args:

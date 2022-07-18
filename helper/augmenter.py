@@ -27,21 +27,16 @@ class Augmenter:
         #])
         self.train_transforms = A.Compose(
             [
-                A.SmallestMaxSize(max_size=350),
-                A.RandomCrop(height=256, width=256),
-                A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
-                A.RandomBrightnessContrast(p=0.5),
-                A.MultiplicativeNoise(multiplier=[0.5,2], per_channel=True, p=0.2),
+                A.Resize(self.preproc_args['resize_len'], self.preproc_args['resize_len']),
+                A.SmallestMaxSize(max_size=self.preproc_args['resize_len']),
                 A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                A.HueSaturationValue(hue_shift_limit=0.2, sat_shift_limit=0.2, val_shift_limit=0.2, p=0.5),
-                A.RandomBrightnessContrast(brightness_limit=(-0.1,0.1), contrast_limit=(-0.1, 0.1), p=0.5),
                 ToTensorV2(),
             ]
         )
         self.test_transforms = A.Compose(
             [
-                A.SmallestMaxSize(max_size=350),
-                A.CenterCrop(height=256, width=256),
+                A.Resize(self.preproc_args['resize_len'], self.preproc_args['resize_len']),
+                A.SmallestMaxSize(max_size=self.preproc_args['resize_len']),
                 A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
             ]

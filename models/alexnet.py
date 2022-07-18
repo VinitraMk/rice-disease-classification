@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 
 class AlexNet(nn.Module):
-    def __init__(self, num_classes: int = 3, dropout: float = 0.5) -> None:
+    def __init__(self, num_classes: int = 3, dropout: float = 0.5):
         super().__init__()
+        self.cpu = torch.device('cpu')
         self.features = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
             nn.ReLU(inplace=True),
@@ -29,10 +30,41 @@ class AlexNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(4096, num_classes),
         )
+    
+    def __get_image_partitions(self, partitions, device):
+        partition_features = []
+        no_of_partitions = partitions.shape[0]
+        for i in range(no_of_partitions):
+            x = partitions[i].unsqueeze(0).to(device)
+            x = self.features(x)
+            x = self.avgpool(x)
+            x = torch.flatten(x, 1)
+            x.to(self.cpu)
+            partition_features.append(x)
+        return partition_features
+    
+    def __iterate_through_batch(self, batches, device):
+        batch_results = []
+        for image_partitions in batches:
+            image_partition_features = self.__get_image_partitions(image_partitions, device)
+            inp = torch.stack(image_partition_features)
+            avg_of_all_features = torch.mean(inp, 2)
+            max_feature_index = torch.max(avg_of_all_features, 0).indices.item()
+            #max_feature_index = int(max_feature / image_partition_features[0].shape[1])
+            del image_partition_features[:]
+            del image_partition_features
+            inp[max_feature_index].to(device)
+            x = self.classifier(inp[max_feature_index])
+            x = torch.sigmoid(x)
+            batch_results.append(x)
+        return batch_results
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.features(x)
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.classifier(x)
-        return x
+    def forward(self, batches: torch.Tensor, device):
+        batch_results = self.__iterate_through_batch(batches, device)
+        #x = self.features(x)
+        #x = self.avgpool(x)
+        #print('features', x.shape)
+        #x = torch.flatten(x, 1)
+        #print('flatten features', x.shape)
+        #x = self.classifier(x)
+        return batch_results

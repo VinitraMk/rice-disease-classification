@@ -23,6 +23,7 @@ from helper.preprocessor import Preprocessor
 from helper.augmenter import Augmenter
 from constants.types.model_enums import Model
 from models.cnn import CNN
+from models.alexnet import AlexNet
 from experiments.RiceDataset import RiceDataset 
 from helper.utils import get_config, get_filename, get_model_params, get_preproc_params, init_weights, read_json, save_fig, save_model, save_tensor, get_target_cols, get_azure_config
 
@@ -52,7 +53,7 @@ class Index:
         self.__prepare_datasets()
         self.__make_model()
         self.__make_azure_resources()
-        print("############# Starting training with training data #############################\n\n")
+        self.__build_data_and_upload()
         self.__start_training(self.test_loader)
 
     def __get_labels(self, predicted_labels):
@@ -85,18 +86,20 @@ class Index:
     
     def __prepare_datasets(self):
         print('\nPreparing dataset')
-        self.train_loader = DataLoader(self.train_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
+        self.train_loader = DataLoader(self.train_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"], collate_fn=self.preprocessor.collate_batch)
         self.train_batches_count = int(len(self.train_dataset) / self.model_args["batch_size"]) + 1
-        self.valid_loader = DataLoader(self.valid_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
+        self.valid_loader = DataLoader(self.valid_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"], collate_fn=self.preprocessor.collate_batch)
         self.valid_batches_count = int(len(self.valid_dataset) / self.model_args["batch_size"]) + 1
-        self.test_loader = DataLoader(self.test_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
+        self.test_loader = DataLoader(self.test_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"], collate_fn=self.preprocessor.collate_batch)
         self.test_batches_count = int(len(self.test_dataset) / self.model_args["batch_size"]) + 1
 
     def __make_model(self):
         print('\nMaking model')
         if (self.model_args["model"] == Model.CNN):
             self.model = CNN()
-        criterion = torch.nn.CrossEntropyLoss()
+        elif (self.model_args["model"] == Model.ALEXNET):
+            self.model = AlexNet()
+        criterion = torch.nn.NLLLoss()
         optimizer = torch.optim.SGD(self.model.parameters(), lr = self.model_args['lr'], momentum = self.model_args["momentum"])
         model_obj = {
             'model_state': self.model.state_dict(),
@@ -121,20 +124,13 @@ class Index:
         print('\tConfiguring Environment')
         self.azenv = Environment.get(workspace=self.azws, name="vinazureml-env")
         self.azexp = AzExperiment(workspace=self.azws, name=f'{todaystring}-experiments')
-        print('\tGetting default blob store\n')
+        print('\tGetting default blob store')
         self.def_blob_store = self.azws.get_default_datastore()
 
     def __copy_model_chkpoint(self):
-        local_model_path = f"{self.config['internal_output_path']}/{self.model_args['model']}_model.pt"
-        upload_model_path = f"{self.config['processed_io_path']}/models/{self.model_args['model']}_model.pt"
         train_scripts_path = f"{self.config['processed_io_path']}/training_scripts"
         local_script_path = './models/training_scripts/train_nn.py'
         local_model_file = f'./models/{self.model_args["model"]}.py'
-        if (os.path.isfile(local_model_path)):
-            shutil.copy(local_model_path, upload_model_path)
-            #os.system(f"copy {local_model_path} {upload_model_path}")
-        #os.system(f"copy {local_script_path} {train_scripts_path}")
-        #os.system(f"copy {local_model_file} {train_scripts_path}")
         shutil.copy(local_script_path, f'{train_scripts_path}/train_nn.py')
         shutil.copy(local_model_file, f'{train_scripts_path}/{self.model_args["model"]}.py')
         
@@ -163,10 +159,10 @@ class Index:
 
     def __upload_batch_data(self):
         self.__copy_model_chkpoint()
-        print('\nUploding scripts and data')
+        print('\tUploading scripts and data')
         if (self.model_args['refresh_data']):
             print('\t\tUploading data to blob storage')
-            self.def_blob_store.upload(src_dir='./processed_io/input', target_path="input/input", overwrite=True, show_progress = False)
+            self.def_blob_store.upload(src_dir='./processed_io/input', target_path="input/input", overwrite=True, show_progress = True)
         if (self.model_args['refresh_model']):
             print('\t\tUploading model to blob storage')
             self.def_blob_store.upload(src_dir='./processed_io/models', target_path="input/models", overwrite=True, show_progress = False)
@@ -180,7 +176,9 @@ class Index:
         LOCAL_MODEL_PATH = f"{config['internal_output_path']}\\{self.model_args['model']}_model.pt"
         blob_client_model = self.blob_service_client.get_blob_client(MODEL_CONTAINER, f'{self.model_args["model"]}_model.pt', snapshot=None)
         blob_client_modeldet = self.blob_service_client.get_blob_client(MODEL_CONTAINER, f'{self.model_args["model"]}_model_details.json', snapshot=None)
+        print('\tDownloading model')
         self.__download_blob(LOCAL_MODEL_PATH, blob_client_model)
+        print('\tDownloading model details')
         self.__download_blob(LOCAL_MODELDET_PATH, blob_client_modeldet)
         blob_client_modeldet.delete_blob()
         with open(LOCAL_MODELDET_PATH) as fp:
@@ -212,20 +210,17 @@ class Index:
         #plot for loss and accuracy
         print("\nPlotting loss and accuracy for all epochs")
         x = np.arange(1, self.model_args["num_epochs"]+1)
-        y1, y2 = [], []
+        y1 = []
         avg_acc, avg_loss = 0, 0
         for i in range(1, self.model_args["num_epochs"]+1):
             y1.append(self.model_details[f"epoch_{i}"]["loss"])
-            y2.append(self.model_details[f"epoch_{i}"]["accuracy"] * 100)
-            avg_acc+=self.model_details[f"epoch_{i}"]["accuracy"]
             avg_loss+=self.model_details[f"epoch_{i}"]["loss"]
-        avg_acc/=self.model_args["num_epochs"]
-        avg_acc*=100
+        avg_acc=self.model_details["final_accuracy"]
         avg_loss/=self.model_args["num_epochs"]
-        print("\tAverage accuracy:", avg_acc)
+        print("\tFinal Accuracy:", avg_acc * 100)
         print("\tAverage loss:", avg_loss, "\n")
         model_logs = {
-            'average_accuracy': avg_acc,
+            'final_accuracy': avg_acc,
             'average_loss': avg_loss,
             'model_filename': filename,
             'model_params': json.dumps(self.model_args),
@@ -236,8 +231,7 @@ class Index:
         with open(log_output_path, 'w+') as f:
             json.dump(model_logs, f)
 
-        plt.plot(x, y1, color="red", marker='o', linewidth=3, markersize=5)
-        plt.plot(x, y2, color="green", marker="*", linewidth=3, markersize=5)
+        plt.plot(x, y1, color="red", marker='o', linewidth=1, markersize=5)
         save_fig("loss_accuracy_plot", plt)
         plt.clf()
 
@@ -256,12 +250,16 @@ class Index:
             for i, batch in enumerate(self.test_loader):
                 if self.model_args["model"] == Model.CNN:
                     predicted_probs = self.model(batch[0])
+                elif self.model_args["model"] == Model.ALEXNET:
+                    device = torch.device('cpu')
+                    predicted_probs = self.model(batch[0], device)
                     #predicted_labels = torch.max(predicted_probs, 1).indices
                 #actual_labels = batch[0].type(torch.float)
                 get_cols = lambda x: { 'blast': x[0].item(), 'brown': x[1].item(), 'healthy': x[2].item()}
                 preds = []
                 for x in predicted_probs:
-                    preds.append(get_cols(x))
+                    #print('x', x)
+                    preds.append(get_cols(x.squeeze(0)))
                 preds = preds + preds
                 predicted_df = pd.DataFrame(preds, columns=self.model_args['output_labels'])
                 rgn_ids = list(batch[2])
@@ -273,11 +271,13 @@ class Index:
             csv_output_path = f"{out_path}\\{filename}.csv"
             results_df.to_csv(csv_output_path, index = False)
             self.__plot_loss_accuracy(filename)
-        
-    def __start_training(self, test_loader, is_pseudo_test = False):
+
+    def __build_data_and_upload(self):
+        if self.model_args['refresh_data'] or self.model_args['refresh_model']:
+            print('\nBuild data and upload')
         if self.model_args['refresh_data']:
             self.__remove_old_inputs()
-            print('\nBuilding all input tensors for training')
+            print('\tBuilding all input tensors for training')
             for i, batch  in enumerate(self.train_loader):
                 print(f'\tBuilding batch {i} for training')
                 save_tensor(batch[0], f'train_batch_{i}_images')
@@ -286,7 +286,11 @@ class Index:
                 print(f'\tBuilding batch {i} for validation')
                 save_tensor(batch[0], f'valid_batch_{i}_images')
                 save_tensor(batch[1], f'valid_batch_{i}_labels')
-        self.__upload_batch_data()
+        if self.model_args['refresh_data'] or self.model_args['refresh_model']:
+            self.__upload_batch_data()
+
+    def __start_training(self, test_loader, is_pseudo_test = False):
+        print("\nStarting training with training data")
         self.__train_model_in_azure()
         print('\nDownloading output')
         self.__download_output()

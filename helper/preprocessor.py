@@ -54,6 +54,28 @@ class Preprocessor:
 
     def get_data_paths(self):
         return self.train, self.test, self.valid
+    
+    def collate_batch(self, batch):
+        img_partitions = []
+        label_list = []
+        path_list = []
+        for i, sample in enumerate(batch):
+            full_img = torch.Tensor(sample[0])
+            sz = self.preproc_args['crop_len']
+            cols = torch.split(full_img, sz, 2)
+            rows = []
+            for col in cols:
+                lst = torch.split(col, sz, 1)
+                #print('ptn shape', lst[0].shape)
+                rows = rows + list(lst)
+            img_partitions.append(torch.stack(rows, 0))
+            if sample[1] != -1:
+                label_list.append(torch.Tensor(sample[1]))
+            path_list.append(sample[2])
+            #batch[i] = (torch.stack(rows,0), sample[1], sample[2])
+        if len(label_list) == 0:
+            return img_partitions, torch.Tensor(), path_list
+        return img_partitions, torch.stack(label_list), path_list
 
     def __get_label(self, row):
         if (self.preproc_args['encoding_type'] == LabelEncoding.LABEL_ENCODING):
@@ -65,7 +87,7 @@ class Preprocessor:
             return self.class_to_idx[label]
         elif (self.preproc_args['encoding_type'] == LabelEncoding.ONEHOT_ENCODING):
             label = row['Label']
-            labelarr = [0] * self.model_args
+            labelarr = [0] * self.model_args['num_classes']
             if label == 'blast':
                 labelarr[0] = 1
             elif label == 'brown':

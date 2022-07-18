@@ -7,20 +7,21 @@ import re
 import cv2
 
 #custom imports
-from helper.utils import get_model_params, get_target_cols
+from helper.utils import get_model_params, get_target_cols, get_preproc_params
 
 class RiceDataset(Dataset):
     data_list = []
     transform = False
     class_to_idx = dict()
+    preproc_args = None
 
     def __init__(self, data_list, class_to_idx, transform = False):
         self.root_dir = os.environ["ROOT_DIR"]
         self.data_list = data_list
         self.transform = transform
         self.class_to_idx = class_to_idx
+        self.preproc_args = get_preproc_params()
         
-
     def __len__(self):
         return len(self.data_list) 
 

@@ -30,32 +30,31 @@ class AlexNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(4096, num_classes),
         )
+        self.softmax = nn.Softmax(1)
     
     def __get_image_partitions(self, partitions, device):
         partition_features = []
         no_of_partitions = partitions.shape[0]
+        feature_sum = 0
         for i in range(no_of_partitions):
             x = partitions[i].unsqueeze(0).to(device)
             x = self.features(x)
             x = self.avgpool(x)
             x = torch.flatten(x, 1)
             x.to(self.cpu)
-            partition_features.append(x)
-        return partition_features
+            if i == 0:
+                feature_sum = x
+            else:
+                feature_sum = torch.add(feature_sum, x)
+        return feature_sum
     
     def __iterate_through_batch(self, batches, device):
         batch_results = []
         for image_partitions in batches:
-            image_partition_features = self.__get_image_partitions(image_partitions, device)
-            inp = torch.stack(image_partition_features)
-            avg_of_all_features = torch.mean(inp, 2)
-            max_feature_index = torch.max(avg_of_all_features, 0).indices.item()
-            #max_feature_index = int(max_feature / image_partition_features[0].shape[1])
-            del image_partition_features[:]
-            del image_partition_features
-            inp[max_feature_index].to(device)
-            x = self.classifier(inp[max_feature_index])
-            x = torch.sigmoid(x)
+            feature_sum = self.__get_image_partitions(image_partitions, device)
+            feature_sum.to(device)
+            x = self.classifier(feature_sum)
+            x = self.softmax(x)
             batch_results.append(x)
         return batch_results
 

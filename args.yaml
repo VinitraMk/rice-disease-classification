@@ -3,18 +3,19 @@ config:
     image_input_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\input\\images"
     processed_io_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\processed_io"
     output_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\output"
+    reports_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\reports"
     internal_output_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\output\\internal_output"
-    visualizations_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\visualizations"
-    experimental_output_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\experimental_logs"
+    visualizations_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\reports\\visualizations"
+    experimental_output_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\reports\\experimental_logs"
     azureblob_name: "azureml-blobstore-31aeaa24-564c-4aa8-bdf4-fc4b5707bd1b"
     resource_config_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\config.json"
 
 model_args:
     model: 'alexnet'
-    batch_size: 45
-    num_epochs: 50
-    lr: 0.02
-    momentum: 0.9
+    batch_size: 90
+    num_epochs: 100
+    lr: 0.0006
+    momentum: 0.8
     dropout: 0.5
     num_classes: 3
     target_cols: ['Label']
@@ -28,7 +29,7 @@ preproc_args:
     encoding_type: 'ONEHOT_ENCODING'
     train_validation_split: 0.7
     crop_len: 224
-    resize_len: 672
+    resize_len: 224
 
 validation_args:
     validation_type: 'NORMAL_SPLIT'

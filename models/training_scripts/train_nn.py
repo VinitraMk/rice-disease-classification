@@ -74,7 +74,7 @@ class ExperimentTrain:
 
             self.criterion = model_object["criterion"]
             #print('loss loader', self.criterion)
-            self.optimizer = torch.optim.SGD(self.model.parameters(), lr = self.model_args["lr"], momentum = self.model_args["momentum"])
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr = self.model_args['lr'], momentum=self.model_args['momentum'])
             self.optimizer.load_state_dict(model_object["optimizer_state"])
 
     def __train_batch(self, batch_index, epoch_index):
@@ -176,7 +176,7 @@ class ExperimentTrain:
             print(f'\tLoss after epoch {epoch}:', loss)
         accu_val = self.__evaluate_model()
         mlflow.log_metric(f'Accuracy: ', epoch)
-        print(f'\tAccuracy after epoch {epoch}:', accu_val)
+        print(f'\nFinal Accuracy:', accu_val)
 
             
 if __name__ == "__main__":

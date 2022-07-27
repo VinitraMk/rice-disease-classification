@@ -100,7 +100,7 @@ class Index:
         elif (self.model_args["model"] == Model.ALEXNET):
             self.model = AlexNet()
         criterion = torch.nn.NLLLoss()
-        optimizer = torch.optim.SGD(self.model.parameters(), lr = self.model_args['lr'], momentum = self.model_args["momentum"])
+        optimizer = torch.optim.SGD(self.model.parameters(), lr = self.model_args['lr'], momentum=self.model_args['momentum'])
         model_obj = {
             'model_state': self.model.state_dict(),
             'criterion': criterion,
@@ -181,13 +181,10 @@ class Index:
         print('\tDownloading model details')
         self.__download_blob(LOCAL_MODELDET_PATH, blob_client_modeldet)
         blob_client_modeldet.delete_blob()
-        with open(LOCAL_MODELDET_PATH) as fp:
-            self.model_details = json.load(fp)
-
 
     def __download_blob(self, local_filename, blob_client_instance):
         with open(local_filename, "wb") as my_blob:
-            blob_data = blob_client_instance.download_blob()
+            blob_data = blob_client_instance.download_blob(max_concurrency = 5, timeout = 20000)
             blob_data.readinto(my_blob)
 
     def __remove_old_inputs(self):
@@ -207,6 +204,10 @@ class Index:
                 os.remove(local_blob_path)
 
     def __plot_loss_accuracy(self, filename):
+        config = get_config()
+        LOCAL_MODELDET_PATH = f"{config['experimental_output_path']}\\{self.model_args['model']}_model_details.json"
+        with open(LOCAL_MODELDET_PATH) as fp:
+            self.model_details = json.load(fp)
         #plot for loss and accuracy
         print("\nPlotting loss and accuracy for all epochs")
         x = np.arange(1, self.model_args["num_epochs"]+1)
@@ -231,11 +232,19 @@ class Index:
         with open(log_output_path, 'w+') as f:
             json.dump(model_logs, f)
 
-        plt.plot(x, y1, color="red", marker='o', linewidth=1, markersize=5)
-        save_fig("loss_accuracy_plot", plt)
+        plt.figure(figsize=(8, 8))
+        plt.plot(x, y1, color="red", marker='o', linewidth=1, markersize=2)
+        plt.xlabel('Number of epochs')
+        plt.ylabel(f'Loss with Learning rate={self.model_args["lr"]}')
+        plot_filename = f'{filename}_loss_plot'
+        save_fig(plot_filename, plt)
         plt.clf()
 
     def __evaluate_model(self):
+        config = get_config()
+        LOCAL_MODELDET_PATH = f"{config['experimental_output_path']}\\{self.model_args['model']}_model_details.json"
+        with open(LOCAL_MODELDET_PATH) as fp:
+            self.model_details = json.load(fp)
         print('\nGetting test data predictions')
         internal_path = self.config['internal_output_path']
         model_name = self.model_args['model']
@@ -263,10 +272,11 @@ class Index:
                 preds = preds + preds
                 predicted_df = pd.DataFrame(preds, columns=self.model_args['output_labels'])
                 rgn_ids = list(batch[2])
-                other_ids = [x.replace('_rgn','') for x in rgn_ids]
+                other_ids = [x.replace('.jpg','_rgn.jpg') for x in rgn_ids]
                 predicted_ids = pd.DataFrame(rgn_ids + other_ids, columns=['Image_id'])
                 predicted_df = pd.concat([predicted_ids, predicted_df], axis = 1)
                 results_df = pd.concat([results_df, predicted_df])
+                results_df[self.model_args["output_labels"]] = results_df[self.model_args["output_labels"]].round(3)
             filename = get_filename(model_name)
             csv_output_path = f"{out_path}\\{filename}.csv"
             results_df.to_csv(csv_output_path, index = False)

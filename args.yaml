@@ -20,7 +20,7 @@ model_args:
     num_classes: 3
     target_cols: ['Label']
     shuffle_data: False
-    refresh_data: False
+    refresh_data: True
     refresh_model: True
     label_dimension: 1
     output_labels: ['blast','brown', 'healthy']

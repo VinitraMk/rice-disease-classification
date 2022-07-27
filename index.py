@@ -202,6 +202,9 @@ class Index:
             local_blob_path = f"{self.config['internal_output_path']}\\{blob_name}"
             if os.path.exists(local_blob_path):
                 os.remove(local_blob_path)
+        for b in os.listdir(f"{self.config['processed_io_path']}\\input"):
+            local_blob_path = f"{self.config['processed_io_path']}\\input\\{b}"
+            os.remove(local_blob_path)
 
     def __plot_loss_accuracy(self, filename):
         config = get_config()

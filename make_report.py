@@ -3,7 +3,6 @@ from helper.utils import get_config
 import os
 import re
 import json
-import shutil
 import subprocess
 
 reports_dir = './reports'
@@ -14,19 +13,17 @@ def get_files_list():
     config = get_config()
     exp_logs = os.listdir(config["experimental_output_path"])
     vis_files = os.listdir(config["visualizations_path"])
-    #make_datestring = lamda s: f'{"".join(s[:8])}-{"".join(s[8:])}'
     all_files = []
     for fn in exp_logs:
         s = re.findall('\d', fn)
         visfn = ''
         if len(s) != 0:
             datestr = f'{"".join(s[:8])}-{"".join(s[8:])}'
-            #datestr = make_datestring(s)
             _visfn = [x for x in vis_files if datestr in x]
             if len(_visfn) != 0:
                 visfn = _visfn[0]
                 obj = {
-                    'experimental_log_path': f"experimental_logs/{fn}",
+                    'experimental_log_path': f"{config['experimental_output_path']}/{fn}",
                     'visualizations_path': f"visualizations/{visfn}"
                 }
                 all_files.append(obj)
@@ -64,6 +61,5 @@ with open(report_template, 'a+') as fp:
 with open(out_path, 'w+') as fp:
     fp.write(str(soup))
 
-shutil.copy(f"{reports_dir}/dependencies/custom.css", './reports/custom.css')
 cmd = f'python -m http.server 5000 -d {reports_dir}'
 subprocess.call(cmd)

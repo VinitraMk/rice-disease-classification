@@ -12,15 +12,15 @@ config:
 
 model_args:
     model: 'alexnet'
-    batch_size: 90
-    num_epochs: 100
-    lr: 0.0006
+    batch_size: 180
+    num_epochs: 500
+    lr: 0.001
     momentum: 0.8
     dropout: 0.5
     num_classes: 3
     target_cols: ['Label']
     shuffle_data: False
-    refresh_data: True
+    refresh_data: False
     refresh_model: True
     label_dimension: 1
     output_labels: ['blast','brown', 'healthy']

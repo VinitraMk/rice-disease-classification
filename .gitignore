@@ -4,6 +4,8 @@ input/
 reports/experimental_logs/
 processed_io/
 reports/visualizations/
+reports/bundle.json
+reports/images/
 __pycache__/
 *.py[cod]
 catboost_info/
@@ -13,3 +15,4 @@ Lib/
 pyvenv.cfg
 config.json
 catboost_info/
+node_modules/

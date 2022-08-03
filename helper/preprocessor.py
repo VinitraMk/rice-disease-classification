@@ -45,7 +45,7 @@ class Preprocessor:
         for i, row in data.iterrows():
             data_path = f"{self.config['image_input_path']}\\{row['Image_id']}"
             label = self.__get_label(row)
-            a = { 'data_path': data_path, 'label': label, 'Image_id': row['Image_id'] }
+            a = { 'data_path': data_path, 'label': label, 'Image_id': row['Image_id'], 'image_type': 'path' }
             data_list.append(a)
         random.shuffle(data_list)
         ei = int(len(data_list) * self.preproc_args['train_validation_split'])
@@ -58,11 +58,8 @@ class Preprocessor:
         test = test.loc[~(test['Image_id'].str.endswith('rgn.jpg'))]
         for i, row in test.iterrows():
             data_path = f"{self.config['image_input_path']}\\{row['Image_id']}"
-            a = { 'data_path': data_path, 'Image_id': row['Image_id'] }
+            a = { 'data_path': data_path, 'Image_id': row['Image_id'], 'image_type': 'path' }
             self.test.append(a)
-        print('\tTrain size:', len(self.train))
-        print('\tValid size:', len(self.valid))
-        print('\tTest size:', len(self.test))
         print('\tClasses:', list(self.class_to_idx.keys()))
 
     def get_class_mappings(self):
@@ -72,26 +69,32 @@ class Preprocessor:
         return self.train, self.test, self.valid
     
     def collate_batch(self, batch):
-        img_partitions = []
+        img_list = []
         label_list = []
         path_list = []
         for i, sample in enumerate(batch):
             full_img = torch.Tensor(sample[0])
-            sz = self.preproc_args['crop_len']
-            cols = torch.split(full_img, sz, 2)
-            rows = []
-            for col in cols:
-                lst = torch.split(col, sz, 1)
-                #print('ptn shape', lst[0].shape)
-                rows = rows + list(lst)
-            img_partitions.append(torch.stack(rows, 0))
+            #print('full img', full_img.shape)
+            #sz = self.preproc_args['crop_len']
+            #cols = torch.split(full_img, sz, 2)
+            #rows = []
+            #for col in cols:
+                #lst = torch.split(col, sz, 1)
+                ##print('ptn shape', lst[0].shape)
+                #rows = rows + list(lst)
+            #print(rows)
+            #print('row len', len(rows))
+            #exit()
+            print('sample size', sample[0].shape)
+            exit()
+            img_list.append(sample[0])
             if type(sample[1]).__name__ != "int":
                 label_list.append(torch.Tensor(sample[1]))
             path_list.append(sample[2])
-            #batch[i] = (torch.stack(rows,0), sample[1], sample[2])
+        batch_tensor = torch.stack(img_list, 0)
         if len(label_list) == 0:
-            return img_partitions, torch.Tensor(), path_list
-        return img_partitions, torch.stack(label_list), path_list
+            return batch_tensor, torch.Tensor(), path_list
+        return batch_tensor, torch.stack(label_list), path_list
 
     def __get_label(self, row):
         if (self.preproc_args['encoding_type'] == LabelEncoding.LABEL_ENCODING):

@@ -8,7 +8,7 @@ import torch
 import json
 
 def get_filename(filename):
-    now = datetime.now().strftime('%d%m%Y-%H%M%S')
+    now = datetime.now().strftime('%Y%m%d-%H%M%S')
     return f'{filename}_{now}'
 
 def get_config_path():

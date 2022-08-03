@@ -59,11 +59,16 @@ class AlexNet(nn.Module):
         return batch_results
 
     def forward(self, batches: torch.Tensor, device):
-        batch_results = self.__iterate_through_batch(batches, device)
+        batches.to(device)
+        x = self.features(batches)
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
+        x = self.softmax(x)
         #x = self.features(x)
         #x = self.avgpool(x)
         #print('features', x.shape)
         #x = torch.flatten(x, 1)
         #print('flatten features', x.shape)
         #x = self.classifier(x)
-        return batch_results
+        return x

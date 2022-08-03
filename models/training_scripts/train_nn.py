@@ -47,7 +47,7 @@ class ExperimentTrain:
         image_tensor_path = f"{data_input_path}/tensor_{data_type}_batch_{batch_index}_images.pt"
         label_tensor_path = f"{data_input_path}/tensor_{data_type}_batch_{batch_index}_labels.pt"
 
-        self.batch_data = torch.load(image_tensor_path)
+        self.batch_data = torch.load(image_tensor_path, map_location=self.device)
         self.label_tensor = torch.load(label_tensor_path, map_location=self.device)
         if self.model_args["label_dimension"] == 1:
             self.label_tensor = self.__get_label_values(self.label_tensor)
@@ -84,8 +84,7 @@ class ExperimentTrain:
         if self.model_args["model"] == 'cnn':
             predicted_labels = self.model(self.image_tensor)
         if self.model_args["model"] == 'alexnet':
-            preds = self.model(self.batch_data, self.device)
-            predicted_labels = torch.stack(preds)
+            predicted_labels = self.model(self.batch_data, self.device)
         else:
             print('\nInvalid model name')
             print('Exiting program')
@@ -144,9 +143,8 @@ class ExperimentTrain:
                     predicted_probs = self.model(self.image_tensor)
                 elif self.model_name == 'alexnet':
                     predicted_probs = self.model(self.batch_data, self.device)
-                    predicted_probs = torch.stack(predicted_probs)
-                #print(predicted_probs[:5], predicted_probs.shape)
-                predicted_labels = torch.max(predicted_probs, 2).indices.squeeze(1)
+                print(predicted_probs[:5], predicted_probs.shape)
+                predicted_labels = torch.max(predicted_probs, 1).indices
                 #print('predicted lbls', predicted_labels, predicted_labels.shape)
                 #print('label tensor shape', self.label_tensor.shape)
                 if self.model_args['label_dimension'] == 3:

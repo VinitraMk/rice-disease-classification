@@ -2,12 +2,14 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import os
 import pandas as pd
-from constants.types.model_enums import Model
+import numpy as np
 import re
 import cv2
 
 #custom imports
 from helper.utils import get_model_params, get_target_cols, get_preproc_params
+from constants.types.model_enums import Model
+
 
 class RiceDataset(Dataset):
     data_list = []
@@ -26,8 +28,13 @@ class RiceDataset(Dataset):
         return len(self.data_list) 
 
     def __getitem__(self, idx):
-        image_path = self.data_list[idx]['data_path']
-        image = cv2.imread(image_path)
+        data_obj = self.data_list[idx]
+        if data_obj['image_type'] == 'path':
+            image_path = self.data_list[idx]['data_path']
+            image = cv2.imread(image_path)
+        else:
+            image = data_obj['image_tensor']
+            image = np.asarray(image)
         #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         label = -1
         if 'label' in self.data_list[idx]:

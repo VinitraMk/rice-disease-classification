@@ -20,6 +20,7 @@ import shutil
 
 #custom imports
 from helper.preprocessor import Preprocessor
+from helper.transformer import Transformer
 from helper.augmenter import Augmenter
 from constants.types.model_enums import Model
 from models.cnn import CNN
@@ -73,12 +74,17 @@ class Index:
 
     def __preprocess_data(self):
         print('\nSetting up preprocessor')
-        self.augmenter = Augmenter()
+        self.transformer = Transformer()
         self.preprocessor = Preprocessor()
         class_to_idx, idx_to_class = self.preprocessor.get_class_mappings()
         self.idx_to_class = idx_to_class
         train, test, valid = self.preprocessor.get_data_paths()
-        train_transforms, test_transforms = self.augmenter.get_transforms()
+        self.augmenter = Augmenter(train)
+        train = self.augmenter.augment_data()
+        print('\tTrain size:', len(train))
+        print('\tValid size:', len(valid))
+        print('\tTest size:', len(test))
+        train_transforms, test_transforms = self.transformer.get_transforms()
         self.train_dataset = RiceDataset(train, class_to_idx, train_transforms)
         self.valid_dataset = RiceDataset(valid, class_to_idx, test_transforms)
         self.test_dataset = RiceDataset(test, class_to_idx, test_transforms)
@@ -86,11 +92,11 @@ class Index:
     
     def __prepare_datasets(self):
         print('\nPreparing dataset')
-        self.train_loader = DataLoader(self.train_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"], collate_fn=self.preprocessor.collate_batch)
+        self.train_loader = DataLoader(self.train_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
         self.train_batches_count = int(len(self.train_dataset) / self.model_args["batch_size"]) + 1
-        self.valid_loader = DataLoader(self.valid_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"], collate_fn=self.preprocessor.collate_batch)
+        self.valid_loader = DataLoader(self.valid_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
         self.valid_batches_count = int(len(self.valid_dataset) / self.model_args["batch_size"]) + 1
-        self.test_loader = DataLoader(self.test_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"], collate_fn=self.preprocessor.collate_batch)
+        self.test_loader = DataLoader(self.test_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
         self.test_batches_count = int(len(self.test_dataset) / self.model_args["batch_size"]) + 1
 
     def __make_model(self):
@@ -188,7 +194,7 @@ class Index:
             blob_data.readinto(my_blob)
 
     def __remove_old_inputs(self):
-        print('\nDeleting old inputs')
+        print('\tDeleting old inputs')
         ROOT_CONTAINER = 'azureml-blobstore-31aeaa24-564c-4aa8-bdf4-fc4b5707bd1b'
         FOLDER_CONTAINER = f"{ROOT_CONTAINER}/input/input"
         LOCAL_PATH = self.config["internal_output_path"]
@@ -219,7 +225,7 @@ class Index:
         for i in range(1, self.model_args["num_epochs"]+1):
             y1.append(self.model_details[f"epoch_{i}"]["loss"])
             avg_loss+=self.model_details[f"epoch_{i}"]["loss"]
-        avg_acc=self.model_details["final_accuracy"]
+        avg_acc= self.model_details["final_accuracy"] if 'final_accuracy' in self.model_details else -1
         avg_loss/=self.model_args["num_epochs"]
         print("\tFinal Accuracy:", avg_acc * 100)
         print("\tAverage loss:", avg_loss, "\n")

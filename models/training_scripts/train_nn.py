@@ -75,6 +75,7 @@ class ExperimentTrain:
             self.criterion = model_object["criterion"]
             #print('loss loader', self.criterion)
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr = self.model_args['lr'], momentum=self.model_args['momentum'])
+            #self.optimizer = torch.optim.Adam(self.model.parameters(), lr = self.model_args['lr'])
             self.optimizer.load_state_dict(model_object["optimizer_state"])
 
     def __train_batch(self, batch_index, epoch_index):

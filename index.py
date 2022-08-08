@@ -107,6 +107,7 @@ class Index:
             self.model = AlexNet()
         criterion = torch.nn.NLLLoss()
         optimizer = torch.optim.SGD(self.model.parameters(), lr = self.model_args['lr'], momentum=self.model_args['momentum'])
+        #optimizer = torch.optim.Adam(self.model.parameters(), lr = self.model_args['lr'])
         model_obj = {
             'model_state': self.model.state_dict(),
             'criterion': criterion,

@@ -4,7 +4,9 @@ input/
 reports/experimental_logs/
 processed_io/
 reports/visualizations/
-reports/bundle.json
+reports/bundle.js
+reports/ergconfig.json
+reports/eogconfig.json
 reports/images/
 __pycache__/
 *.py[cod]

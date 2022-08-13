@@ -123,3 +123,18 @@ def download_model(model_path):
 def get_target_cols():
     model_args = get_model_params()
     return model_args['target_cols']
+
+def is_property_in_array(arr, property, value):
+    return any(x for x in arr if (x[property] != None and x[property] == value))
+
+def find_index(arr, property, value):
+    for index, el in enumerate(arr):
+        if arr[index][property] != None and arr[index][property] == value:
+            return index
+    return -1
+
+def find_value(arr, property, value):
+    for index, el in enumerate(arr):
+        if arr[index][property] != None and arr[index][property] == value:
+            return arr[index]
+    return None

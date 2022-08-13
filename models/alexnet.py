@@ -29,22 +29,39 @@ class AlexNet(nn.Module):
         )
         self.features.apply(self.__init_weights)
         self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
+
+        #Adding double the feature vectors in linear layers
         self.classifier = nn.Sequential(
             nn.Dropout(p=dropout),
-            nn.Linear(256 * 6 * 6, 4096),
+            nn.Linear(256 * 6 * 6 * 2, 4096 * 2),
             nn.ReLU(inplace=True),
             nn.Dropout(p=dropout),
+            nn.Linear(4096 * 2, 4096),
+            nn.ReLU(inplace=True),
             nn.Linear(4096, 4096),
             nn.ReLU(inplace=True),
             nn.Linear(4096, num_classes),
         )
         self.softmax = nn.Softmax(1)
-    
-    def forward(self, batches: torch.Tensor, device):
+
+    '''
+    def classify(self, batch_a_features, batch_b_features):
+        all_features = torch.cat([batch_a_features, batch_b_features])
+        x = self.classifier(all_features)
+        return self.softmax(x)
+    '''
+
+    def forward(self, batches: torch.Tensor, batches_rgn: torch.Tensor, device):
         batches.to(device)
+        batches_rgn.to(device)
         x = self.features(batches)
+        x_rgn = self.features(batches_rgn)
         x = self.avgpool(x)
+        x_rgn = self.avgpool(x_rgn)
         x = torch.flatten(x, 1)
+        x_rgn = torch.flatten(x_rgn, 1)
+        x = torch.cat([x, x_rgn], 1)
+        x_rgn.to(self.cpu)
         x = self.classifier(x)
         x = self.softmax(x)
         return x

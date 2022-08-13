@@ -7,10 +7,13 @@ from helper.utils import get_config
 
 class Augmenter:
     old_train = None
+    old_train_rgn = None
     flip_transform = None
 
-    def __init__(self, train):
+    def __init__(self, train, train_rgn):
         self.old_train = train
+        self.old_train_rgn = train_rgn
+        self.resize_transform = transforms.Resize((800, 800))
         self.flip_transform = transforms.RandomHorizontalFlip(p=1)
         self.rotate_90transform = transforms.RandomRotation(90)
         self.rotate_180transform = transforms.RandomRotation(180)
@@ -21,12 +24,13 @@ class Augmenter:
         self.saturation_transform = transforms.ColorJitter(saturation=2)
         self.hue_transform = transforms.ColorJitter(hue=0.5)
 
-    def augment_data(self):
-        config = get_config()
+    def __augment_data(self, data, is_rgn = False):
         new_list = []
-        for img_el in self.old_train:
+        for img_el in data:
             #img_tensor = transforms.ToTensor(cv2.imread(img_el['data_path']))
             img_tensor = PIL.Image.open(img_el['data_path'])
+            if is_rgn:
+                img_tensor = self.resize_transform(img_tensor)
             img_label = img_el['label']
             img_id = img_el['Image_id']
             flip_img = self.flip_transform(img_tensor)
@@ -47,5 +51,13 @@ class Augmenter:
             new_list.append({ 'image_tensor': img_sat, 'label': img_label, 'Image_id': f'{img_id}_sat', 'image_type': 'image_tensor' })
             img_hue = self.hue_transform(img_tensor)
             new_list.append({ 'image_tensor': img_hue, 'label': img_label, 'Image_id': f'{img_id}_hue', 'image_type': 'image_tensor' })
-        new_list = self.old_train + new_list
         return new_list
+
+
+    def augment_data(self):
+        config = get_config()
+        new_list = self.__augment_data(self.old_train)
+        new_list = self.old_train + new_list
+        new_list_rgn = self.__augment_data(self.old_train_rgn, True)
+        new_list_rgn = self.old_train_rgn + new_list_rgn
+        return new_list, new_list_rgn

@@ -47,6 +47,9 @@ class Index:
     def __init__(self):
         if not(os.getenv('ROOT_DIR')):
             os.environ['ROOT_DIR'] = os.getcwd()
+            az_config = get_azure_config()
+            os.environ['AZURE_STORAGE_CONNECTIONKEY'] = az_config['connection_key']
+            os.environ['AZURE_STORAGE_CONNECTIONSTRING'] = az_config['connection_string']
 
     def start_program(self):
         self.__define_args()
@@ -78,25 +81,34 @@ class Index:
         self.preprocessor = Preprocessor()
         class_to_idx, idx_to_class = self.preprocessor.get_class_mappings()
         self.idx_to_class = idx_to_class
-        train, test, valid = self.preprocessor.get_data_paths()
-        self.augmenter = Augmenter(train)
-        train = self.augmenter.augment_data()
+        train, train_rgn, test, test_rgn, valid, valid_rgn = self.preprocessor.get_data_paths()
+        print('\nSetting up Augmenter')
+        self.augmenter = Augmenter(train, train_rgn)
+        train, train_rgn = self.augmenter.augment_data()
         print('\tTrain size:', len(train))
+        print('\tTrain Rgn size:', len(train_rgn))
         print('\tValid size:', len(valid))
+        print('\tValid Rgn size:', len(valid_rgn))
         print('\tTest size:', len(test))
         train_transforms, test_transforms = self.transformer.get_transforms()
         self.train_dataset = RiceDataset(train, class_to_idx, train_transforms)
+        self.train_rgn_dataset = RiceDataset(train_rgn, class_to_idx, train_transforms)
         self.valid_dataset = RiceDataset(valid, class_to_idx, test_transforms)
+        self.valid_rgn_dataset = RiceDataset(valid_rgn, class_to_idx, test_transforms)
         self.test_dataset = RiceDataset(test, class_to_idx, test_transforms)
-        #self.preprocessor.start_preprocessing(self.train_dataset)
+        self.test_rgn_dataset = RiceDataset(test_rgn, class_to_idx, test_transforms)
     
     def __prepare_datasets(self):
         print('\nPreparing dataset')
         self.train_loader = DataLoader(self.train_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
         self.train_batches_count = int(len(self.train_dataset) / self.model_args["batch_size"]) + 1
+        self.train_rgn_loader = DataLoader(self.train_rgn_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
+        self.train_rgn_batches_count = int(len(self.train_rgn_dataset) / self.model_args["batch_size"]) + 1
         self.valid_loader = DataLoader(self.valid_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
+        self.valid_rgn_loader = DataLoader(self.valid_rgn_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
         self.valid_batches_count = int(len(self.valid_dataset) / self.model_args["batch_size"]) + 1
         self.test_loader = DataLoader(self.test_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
+        self.test_rgn_loader = DataLoader(self.test_rgn_dataset, batch_size = self.model_args["batch_size"], shuffle = self.model_args["shuffle_data"])
         self.test_batches_count = int(len(self.test_dataset) / self.model_args["batch_size"]) + 1
 
     def __make_model(self):
@@ -140,11 +152,6 @@ class Index:
         local_model_file = f'./models/{self.model_args["model"]}.py'
         shutil.copy(local_script_path, f'{train_scripts_path}/train_nn.py')
         shutil.copy(local_model_file, f'{train_scripts_path}/{self.model_args["model"]}.py')
-        
-
-    def __merge_output_with_training(self):
-        new_train_dataset = torch.utils.data.ConcatDataset([self.split_train_dataset, self.new_dataset])
-        self.train_loader = DataLoader(new_train_dataset, batch_size = self.model_args["batch_size"], shuffle = True, collate_fn=self.preprocessor.collate_batch)
         
     def __train_model_in_azure(self, is_first_batch = False, is_last_batch = False):
         print('\tBuilding config for experiment run')
@@ -266,12 +273,12 @@ class Index:
         target_cols = get_target_cols()
         results_df = pd.DataFrame([], columns=['Image_id'] + self.model_args['output_labels'])
         with torch.no_grad():
-            for i, batch in enumerate(self.test_loader):
+            for i, (batch, batch_rgn) in enumerate(zip(self.test_loader, self.test_rgn_loader)):
                 if self.model_args["model"] == Model.CNN:
                     predicted_probs = self.model(batch[0])
                 elif self.model_args["model"] == Model.ALEXNET:
                     device = torch.device('cpu')
-                    predicted_probs = self.model(batch[0], device)
+                    predicted_probs = self.model(batch[0], batch_rgn[0], device)
                     #predicted_labels = torch.max(predicted_probs, 1).indices
                 #actual_labels = batch[0].type(torch.float)
                 get_cols = lambda x: { 'blast': x[0].item(), 'brown': x[1].item(), 'healthy': x[2].item()}
@@ -298,14 +305,22 @@ class Index:
         if self.model_args['refresh_data']:
             self.__remove_old_inputs()
             print('\tBuilding all input tensors for training')
-            for i, batch  in enumerate(self.train_loader):
+            for i, batch in enumerate(self.train_loader):
                 print(f'\tBuilding batch {i} for training')
                 save_tensor(batch[0], f'train_batch_{i}_images')
                 save_tensor(batch[1], f'train_batch_{i}_labels')
+            for i, batch in enumerate(self.train_rgn_loader):
+                print(f'\tBuilding batch {i} for training rgn')
+                save_tensor(batch[0], f'train_rgn_batch_{i}_images')
+                save_tensor(batch[1], f'train_rgn_batch_{i}_labels')
             for i, batch in enumerate(self.valid_loader):
                 print(f'\tBuilding batch {i} for validation')
                 save_tensor(batch[0], f'valid_batch_{i}_images')
                 save_tensor(batch[1], f'valid_batch_{i}_labels')
+            for i, batch in enumerate(self.valid_rgn_loader):
+                print(f'\tBuilding batch {i} for validation rgn')
+                save_tensor(batch[0], f'valid_rgn_batch_{i}_images')
+                save_tensor(batch[1], f'valid_rgn_batch_{i}_labels')
         if self.model_args['refresh_data'] or self.model_args['refresh_model']:
             self.__upload_batch_data()
 

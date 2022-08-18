@@ -25,6 +25,7 @@ from helper.augmenter import Augmenter
 from constants.types.model_enums import Model
 from models.cnn import CNN
 from models.alexnet import AlexNet
+from models.resnet import ResNet, BasicBlock
 from experiments.RiceDataset import RiceDataset 
 from helper.utils import get_config, get_filename, get_model_params, get_preproc_params, init_weights, read_json, save_fig, save_model, save_tensor, get_target_cols, get_azure_config
 
@@ -117,6 +118,9 @@ class Index:
             self.model = CNN()
         elif (self.model_args["model"] == Model.ALEXNET):
             self.model = AlexNet()
+        elif (self.model_args["model"] == Model.RESNET):
+            layers = [3, 4, 6, 3]
+            self.model = ResNet(BasicBlock, layers, self.model_args["num_classes"])
         criterion = torch.nn.NLLLoss()
         optimizer = torch.optim.SGD(self.model.parameters(), lr = self.model_args['lr'], momentum=self.model_args['momentum'])
         #optimizer = torch.optim.Adam(self.model.parameters(), lr = self.model_args['lr'])
@@ -176,7 +180,7 @@ class Index:
         print('\tUploading scripts and data')
         if (self.model_args['refresh_data']):
             print('\t\tUploading data to blob storage')
-            self.def_blob_store.upload(src_dir='./processed_io/input', target_path="input/input", overwrite=True, show_progress = True)
+            self.def_blob_store.upload(src_dir='./processed_io/input', target_path="input/input", overwrite=True, show_progress = False)
         if (self.model_args['refresh_model']):
             print('\t\tUploading model to blob storage')
             self.def_blob_store.upload(src_dir='./processed_io/models', target_path="input/models", overwrite=True, show_progress = False)
@@ -277,6 +281,9 @@ class Index:
                 if self.model_args["model"] == Model.CNN:
                     predicted_probs = self.model(batch[0])
                 elif self.model_args["model"] == Model.ALEXNET:
+                    device = torch.device('cpu')
+                    predicted_probs = self.model(batch[0], batch_rgn[0], device)
+                elif self.model_args["model"] == Model.RESNET:
                     device = torch.device('cpu')
                     predicted_probs = self.model(batch[0], batch_rgn[0], device)
                     #predicted_labels = torch.max(predicted_probs, 1).indices

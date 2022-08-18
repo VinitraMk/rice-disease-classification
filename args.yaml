@@ -11,9 +11,9 @@ config:
     resource_config_path: "C:\\Users\\vimurali\\ML\\rice-disease-classification\\config.json"
 
 model_args:
-    model: 'alexnet'
-    batch_size: 200
-    num_epochs: 100
+    model: 'resnet'
+    batch_size: 64
+    num_epochs: 25
     lr: 0.0006
     momentum: 0.8
     dropout: 0.5

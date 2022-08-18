@@ -14,6 +14,7 @@ import mlflow
 #custom imports
 from cnn import CNN
 from alexnet import AlexNet
+from resnet import ResNet, BasicBlock
 
 class ExperimentTrain:
     criterion = None
@@ -69,6 +70,9 @@ class ExperimentTrain:
                 self.model = CNN()
             elif model_name == 'alexnet':
                 self.model = AlexNet()
+            elif model_name == 'resnet':
+                layers = [3, 4, 6, 3]
+                self.model = ResNet(BasicBlock, layers, self.model_args["num_classes"])
             model_object = torch.load(model_input_path, map_location=self.device)
             self.model.load_state_dict(model_object["model_state"])
             self.model.to(self.device)
@@ -87,6 +91,8 @@ class ExperimentTrain:
         if self.model_args["model"] == 'cnn':
             predicted_labels = self.model(self.image_tensor)
         if self.model_args["model"] == 'alexnet':
+            predicted_labels = self.model(self.batch_data, self.batch_data_rgn, self.device)
+        if self.model_args["model"] == 'resnet':
             predicted_labels = self.model(self.batch_data, self.batch_data_rgn, self.device)
         else:
             print('\nInvalid model name')
@@ -146,7 +152,9 @@ class ExperimentTrain:
                     predicted_probs = self.model(self.image_tensor)
                 elif self.model_name == 'alexnet':
                     predicted_probs = self.model(self.batch_data, self.batch_data_rgn, self.device)
-                print(predicted_probs[:5], predicted_probs.shape)
+                elif self.model_name == 'resnet':
+                    predicted_probs = self.model(self.batch_data, self.batch_data_rgn, self.device)
+                #print(predicted_probs[:5], predicted_probs.shape)
                 predicted_labels = torch.max(predicted_probs, 1).indices
                 #print('predicted lbls', predicted_labels, predicted_labels.shape)
                 #print('label tensor shape', self.label_tensor.shape)
